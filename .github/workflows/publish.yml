@@ -51,7 +51,7 @@ jobs:
             git -C "$RUNNER_TEMP/published" checkout --orphan published
             git -C "$RUNNER_TEMP/published" rm -rf .
           fi
-          cp -R dist/. "$RUNNER_TEMP/published/"
+          rsync -a --delete --exclude=.git dist/ "$RUNNER_TEMP/published/"
           cd "$RUNNER_TEMP/published"
           git add .
           if git diff --cached --quiet; then
