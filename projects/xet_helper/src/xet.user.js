@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         小鹅通 · 看课助手
 // @namespace    local.xiaoe.study
-// @version      1.4.0
+// @version      1.4.1
 // @description  默认剧院、侧栏标记、全部课程标记汇总(折叠/跳转/导出全部)、油猴内置存储、倍速、A–B 循环与笔记导出
 // @match        https://*.h5.xet.pomoho.com/v4/course/*
 // @grant        GM_setValue

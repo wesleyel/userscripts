@@ -1,0 +1,10 @@
+{
+  "name": "wesleyel-userscripts",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "check": "node tools/check.mjs",
+    "build": "node tools/build.mjs"
+  },
+  "engines": { "node": ">=22" }
+}

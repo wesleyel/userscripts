@@ -5,11 +5,14 @@ import { spawnSync } from 'node:child_process';
 import assert from 'node:assert/strict';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
-const files = readdirSync(resolve(root, 'scripts')).filter(name => name.endsWith('.user.js'));
+const files = readdirSync(resolve(root, 'projects')).flatMap(project =>
+  readdirSync(resolve(root, 'projects', project, 'src'))
+    .filter(name => name.endsWith('.user.js'))
+    .map(name => `projects/${project}/src/${name}`));
 assert(files.length > 0, 'No userscripts found');
 const identities = new Set();
 for (const file of files) {
-  const path = resolve(root, 'scripts', file);
+  const path = resolve(root, file);
   const source = readFileSync(path, 'utf8');
   const header = source.match(/^\/\/ ==UserScript==\r?\n([\s\S]*?)^\/\/ ==\/UserScript==/m)?.[1];
   assert(header, `${file}: missing metadata block`);

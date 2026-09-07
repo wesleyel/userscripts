@@ -1,0 +1,62 @@
+name: Build and publish
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: publish-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm run build
+      - uses: actions/upload-artifact@v4
+        with:
+          name: userscripts
+          path: dist/
+          if-no-files-found: error
+  publish:
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: userscripts
+          path: dist
+      - name: Publish built scripts
+        env:
+          SOURCE_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          if git ls-remote --exit-code --heads origin published >/dev/null; then
+            git fetch origin published
+            git worktree add "$RUNNER_TEMP/published" FETCH_HEAD
+          else
+            git worktree add --detach "$RUNNER_TEMP/published"
+            git -C "$RUNNER_TEMP/published" checkout --orphan published
+            git -C "$RUNNER_TEMP/published" rm -rf .
+          fi
+          cp -R dist/. "$RUNNER_TEMP/published/"
+          cd "$RUNNER_TEMP/published"
+          git add .
+          if git diff --cached --quiet; then
+            echo 'Built scripts unchanged.'
+          else
+            git commit -m "Build from $SOURCE_SHA"
+            git push origin HEAD:published
+          fi
