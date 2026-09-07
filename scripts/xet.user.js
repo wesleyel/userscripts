@@ -1051,7 +1051,7 @@
 
       const metaEl = document.createElement('div');
       metaEl.className = 'all-course-meta';
-      
+
       const badge = document.createElement('span');
       badge.className = 'all-course-badge' + (isCurrent ? ' current' : '');
       badge.textContent = isCurrent ? '当前正在看' : `${c.records.length} 个标记`;
