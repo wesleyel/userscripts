@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         CodeBrick 手写作答 OCR + AI 判分
 // @namespace    https://www.codebrick.tech/
-// @version      3.0.2
+// @version      3.0.3
 // @description  CodeBrick 刷题页：iPad 手写作答图 OCR 转文字、智能截图题卡、复制全题（含选择题选项 / 我的选择 / 正确答案）、对照解析踩分点 AI 判分（任意 OpenAI 兼容服务，可配置多个）
 // @author       wesley
 // @match        https://www.codebrick.tech/practice/*

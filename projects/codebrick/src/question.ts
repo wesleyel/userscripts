@@ -160,11 +160,11 @@ export function getQuestionMeta() {
   const diffEl = $('.difficulty, .qhead .difficulty');
 
   let source = badgeEl?.textContent?.trim() || badgeEl?.getAttribute('title')?.trim() || '';
+  if (!source) source = $('.qhead .ctx-crumb')?.innerText.replace(/\s+/g, ' ').trim() || '';
   if (!source && qmetaEl) {
     const m = qmetaEl.textContent!.match(/(?:真题|统考|模拟|期末|练习)[^·\n]*/);
     if (m) source = m[0].trim();
   }
-  if (!source) source = $('.qhead .ctx-crumb')?.innerText.replace(/\s+/g, ' ').trim() || '';
   if (!source) source = document.title.replace(/ - CodeBrick.*|CodeBrick.*$/i, '').trim() || '题目';
 
   let score = '';

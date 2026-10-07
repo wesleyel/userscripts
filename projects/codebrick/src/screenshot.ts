@@ -1,4 +1,5 @@
 import { escHtml, $ } from './dom';
+import { readChoice } from './question';
 import { cfg, DEFAULT_SHOT_WIDTH } from './config';
 import { getKind, getQuestionMeta, type QuestionMeta } from './question';
 
@@ -44,19 +45,11 @@ export async function captureStemCard(): Promise<Shot> {
       ${meta.score ? `<span class="cbocr-shot-score"><span style="color:#d97706">💯</span> ${escHtml(meta.score)}</span>` : ''}
       ${meta.difficulty ? `<span class="cbocr-shot-diff"><span>难度</span> <span class="stars">${escHtml(meta.difficulty)}</span></span>` : ''}
     </div>`;
-  // 选择题：离屏克隆「题干 + 选项」，并抹掉作答状态/统计，保证截出来是一张干净的空白题卡
+  // 选择题：离屏渲染一张自绘的「题干 + 选项」卡片（带已选 / 正确答案标记），不依赖站点样式
   let target: HTMLElement = stem;
   let temp: HTMLElement | null = null;
-  const choiceCard = getKind() === 'choice' ? $('button.opt')?.closest<HTMLElement>('.card') : null;
-  if (choiceCard) {
-    temp = document.createElement('div');
-    temp.className = 'cbocr-shot-wrap';
-    temp.style.cssText = 'position:fixed;left:-10000px;top:0;display:flex;flex-direction:column;gap:8px;background:#fff;';
-    const stemCopy = stem.cloneNode(true) as HTMLElement;
-    const optCopy = choiceCard.cloneNode(true) as HTMLElement;
-    optCopy.querySelectorAll('.answer-actions, .opt-numhint, [class*=opt-dist]').forEach((e) => e.remove());
-    optCopy.querySelectorAll('.opt').forEach((o) => o.classList.remove('selected', 'wrong', 'correct', 'readonly'));
-    temp.append(header, stemCopy, optCopy);
+  if (getKind() === 'choice') {
+    temp = buildChoiceCard(stem, meta);
     document.body.appendChild(temp);
     target = temp;
   } else {
@@ -73,12 +66,6 @@ export async function captureStemCard(): Promise<Shot> {
   const extraStyle = document.createElement('style');
   extraStyle.textContent = `
     .card.stem img, .card.stem svg { max-width: 100% !important; height: auto !important; }
-    .cbocr-shot-wrap .cbocr-shot-header { margin: 0 !important; }
-    .cbocr-shot-wrap .card { margin: 0 !important; padding: 12px 16px !important; gap: 6px !important; }
-    .cbocr-shot-wrap .md-seg p { margin: 6px 0 !important; }
-    .cbocr-shot-wrap .md-seg > :first-child { margin-top: 0 !important; }
-    .cbocr-shot-wrap .md-seg > :last-child { margin-bottom: 0 !important; }
-    .cbocr-shot-wrap .opt { margin: 0 !important; padding: 6px 12px !important; min-height: 0 !important; height: auto !important; }
   `;
   document.head.appendChild(extraStyle);
 
@@ -107,4 +94,36 @@ export async function captureStemCard(): Promise<Shot> {
       resolve({ canvas, blob, dataUrl: canvas.toDataURL('image/png'), meta });
     }, 'image/png');
   });
+}
+
+/** 自绘选择题卡片：干净的题干 + 选项，已作答 / 已揭晓时用颜色和标签标出 */
+function buildChoiceCard(stem: HTMLElement, meta: QuestionMeta): HTMLElement {
+  const { options } = readChoice();
+  const wrap = document.createElement('div');
+  wrap.className = 'cbocr-cq';
+  wrap.style.cssText = 'position:fixed;left:-10000px;top:0;';
+
+  const head = `
+    <div class="cbocr-cq-head">
+      <span class="cbocr-cq-chip">${escHtml(meta.source)}</span>
+      ${meta.qid ? `<span class="cbocr-cq-qid">${escHtml(meta.qid)}</span>` : ''}
+      <span class="cbocr-cq-sp"></span>
+      ${meta.difficulty ? `<span class="cbocr-cq-diff">${escHtml(meta.difficulty)}</span>` : ''}
+    </div>`;
+
+  const rows = options.map((o, i) => {
+    const btn = document.querySelectorAll('button.opt')[i];
+    const text = btn?.querySelector('.opt-text')?.innerHTML ?? escHtml(o.text);
+    const state = o.correct ? (o.mine ? 'ok' : 'right') : o.mine ? 'bad' : '';
+    const tag = o.correct && o.mine ? '我的选择 · 正确' : o.correct ? '正确答案' : o.mine ? '我的选择' : '';
+    return `<div class="cbocr-cq-opt ${state || (o.mine ? 'mine' : '')}">
+      <span class="cbocr-cq-key">${escHtml(o.key)}</span>
+      <span class="cbocr-cq-text">${text}</span>
+      ${tag ? `<span class="cbocr-cq-tag">${tag}</span>` : ''}
+    </div>`;
+  }).join('');
+
+  const seg = stem.querySelector('.md-seg') || stem;
+  wrap.innerHTML = `${head}<div class="cbocr-cq-stem">${seg.innerHTML}</div><div class="cbocr-cq-opts">${rows}</div>`;
+  return wrap;
 }

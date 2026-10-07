@@ -146,4 +146,38 @@ export const CSS = `
     border-radius: 6px;
     transition: max-width .15s ease;
   }
+
+  /* 选择题截图卡片 */
+  .cbocr-cq {
+    box-sizing: border-box; padding: 20px 24px 22px; background: #fff; color: #1f2937;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Helvetica Neue", sans-serif;
+    font-size: 15px; line-height: 1.7;
+  }
+  .cbocr-cq-head { display: flex; align-items: center; gap: 8px; padding-bottom: 12px; margin-bottom: 14px; border-bottom: 1px solid #eef0f3; font-size: 12px; }
+  .cbocr-cq-chip { padding: 2px 9px; border-radius: 999px; background: #eff6ff; color: #1d4ed8; font-weight: 600; }
+  .cbocr-cq-qid { color: #9ca3af; font-family: ui-monospace, Menlo, monospace; }
+  .cbocr-cq-sp { flex: 1; }
+  .cbocr-cq-diff { color: #f59e0b; letter-spacing: 1px; }
+  .cbocr-cq-stem p { margin: 6px 0; }
+  .cbocr-cq-stem > :first-child { margin-top: 0; }
+  .cbocr-cq-opts { display: flex; flex-direction: column; gap: 8px; margin-top: 16px; }
+  .cbocr-cq-opt {
+    display: flex; align-items: center; gap: 12px; padding: 9px 14px;
+    border: 1px solid #e5e7eb; border-radius: 10px; background: #fff;
+  }
+  .cbocr-cq-key {
+    flex: none; width: 24px; height: 24px; border-radius: 50%; background: #f3f4f6; color: #4b5563;
+    font-size: 13px; font-weight: 600; display: flex; align-items: center; justify-content: center;
+  }
+  .cbocr-cq-text { flex: 1; min-width: 0; }
+  .cbocr-cq-tag { flex: none; font-size: 12px; font-weight: 600; }
+  .cbocr-cq-opt.mine { border-color: #93c5fd; background: #eff6ff; }
+  .cbocr-cq-opt.mine .cbocr-cq-key { background: #2563eb; color: #fff; }
+  .cbocr-cq-opt.mine .cbocr-cq-tag { color: #1d4ed8; }
+  .cbocr-cq-opt.ok, .cbocr-cq-opt.right { border-color: #86efac; background: #f0fdf4; }
+  .cbocr-cq-opt.ok .cbocr-cq-key, .cbocr-cq-opt.right .cbocr-cq-key { background: #16a34a; color: #fff; }
+  .cbocr-cq-opt.ok .cbocr-cq-tag, .cbocr-cq-opt.right .cbocr-cq-tag { color: #15803d; }
+  .cbocr-cq-opt.bad { border-color: #fca5a5; background: #fef2f2; }
+  .cbocr-cq-opt.bad .cbocr-cq-key { background: #dc2626; color: #fff; }
+  .cbocr-cq-opt.bad .cbocr-cq-tag { color: #b91c1c; }
 `;
