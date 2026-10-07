@@ -1,11 +1,10 @@
 import { probe } from '../ai';
 import {
   blankProfile, cfg, defaults, DEFAULT_MAX_TOKENS, DEFAULT_SHOT_WIDTH, providerLabel, profileMaxTokens,
-  profileThinking, save, THINKING_EFFORTS, type InsertMode, type Profile, type Thinking,
+  profileThinking, save, THINKING_EFFORTS, type InsertMode, type ShotMode, type Profile, type Thinking,
 } from '../config';
 import { DEFAULT_GRADE_PROMPT, DEFAULT_PROMPT } from '../prompts';
-import { refreshProfileSel } from './profile-select';
-import { setStatus } from './status';
+import { setStatus, ui } from './status';
 
 const PRESETS: [string, string, string][] = [
   ['OpenAI', 'https://api.openai.com/v1/chat/completions', 'gpt-4o'],
@@ -132,6 +131,12 @@ export function openSettings(): void {
         <option value="replace">替换全部内容</option>
       </select>
 
+      <label>智能截图完成后</label>
+      <select id="o-shotmode">
+        <option value="modal">弹窗预览（可再复制 / 下载）</option>
+        <option value="silent">静默（只写入剪贴板，左下角提示）</option>
+      </select>
+
       <div class="cbocr-check"><input type="checkbox" id="o-stem"><label for="o-stem" style="margin:0;font-weight:400">把题干一起发给模型（提升专业术语识别率）</label></div>
       <div class="cbocr-check"><input type="checkbox" id="o-keep"><label for="o-keep" style="margin:0;font-weight:400">粘贴时同时保留原图（站点照常上传手写件）</label></div>
       <div class="cbocr-check"><input type="checkbox" id="o-autoana"><label for="o-autoana" style="margin:0;font-weight:400">「复制全题」时自动展开解析（会触发站点的自评卡片）</label></div>
@@ -197,6 +202,7 @@ export function openSettings(): void {
   });
 
   g('o-mode').value = cfg.insertMode;
+  g('o-shotmode').value = cfg.shotMode;
   g('o-stem').checked = cfg.useStem;
   g('o-keep').checked = cfg.keepImage;
   g('o-autoana').checked = cfg.autoOpenAnalysis;
@@ -222,6 +228,7 @@ export function openSettings(): void {
     save('profiles', profiles);
     save('activeProfile', active);
     save('insertMode', g('o-mode').value as InsertMode);
+    save('shotMode', g('o-shotmode').value as ShotMode);
     save('useStem', g('o-stem').checked);
     save('keepImage', g('o-keep').checked);
     save('autoOpenAnalysis', g('o-autoana').checked);
@@ -230,7 +237,7 @@ export function openSettings(): void {
     save('prompt', g('o-prompt').value || DEFAULT_PROMPT);
     save('gradePrompt', g('o-gprompt').value || DEFAULT_GRADE_PROMPT);
 
-    refreshProfileSel();
+    ui.onProfileChange?.();
     close();
     setStatus(`设置已保存 · 当前使用 ${providerLabel()}`, 'ok');
   });

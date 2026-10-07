@@ -7,9 +7,8 @@ import { runOCR } from '../ocr';
 import { captureStemCard } from '../screenshot';
 import { state } from '../state';
 import { showResult, showScreenshotModal } from './modals';
-import { refreshProfileSel } from './profile-select';
 import { openSettings } from './settings';
-import { mkBtn, setBusy, setStatus, ui } from './status';
+import { mkFab, setBusy, setFabLabel, setStatus, ui } from './status';
 
 async function handleSmartScreenshot(): Promise<void> {
   if (state.busy) { setStatus('还在处理中，稍等…'); return; }
@@ -24,8 +23,13 @@ async function handleSmartScreenshot(): Promise<void> {
     } catch (err) {
       console.warn('[cbocr] 写入剪贴板异常:', err);
     }
-    setStatus(copied ? '✓ 截图已复制到剪贴板' : '✓ 截图已生成', 'ok');
-    showScreenshotModal(blob, dataUrl, meta, canvas);
+    // 静默模式：只写剪贴板；写失败时退回弹窗，免得截图白做
+    if (cfg.shotMode === 'silent' && copied) {
+      setStatus('✓ 题卡截图已复制到剪贴板，可直接粘贴', 'ok');
+    } else {
+      setStatus(copied ? '✓ 截图已复制到剪贴板' : '✓ 截图已生成', 'ok');
+      showScreenshotModal(blob, dataUrl, meta, canvas);
+    }
   } catch (e) {
     console.error('[cbocr] 智能截图失败:', e);
     setStatus('截图失败：' + (e as Error).message, 'err');
@@ -36,8 +40,8 @@ async function handleSmartScreenshot(): Promise<void> {
 }
 
 /** 复制按钮：包一层 disabled + 状态提示 */
-function copyButton(label: string, title: string, run: () => Promise<string>): HTMLButtonElement {
-  const btn = mkBtn(label, '', async () => {
+function copyFab(icon: string, label: string, cls: string, run: () => Promise<string>): HTMLButtonElement {
+  const btn = mkFab(icon, label, cls, async () => {
     btn.disabled = true;
     try {
       setStatus(await run(), 'ok');
@@ -47,19 +51,19 @@ function copyButton(label: string, title: string, run: () => Promise<string>): H
     } finally {
       btn.disabled = false;
     }
-  }, title);
+  });
   return btn;
 }
 
 function choiceCopyButtons(): HTMLButtonElement[] {
-  const quick = copyButton('📋 复制题目+选项', '复制题干、全部选项和我当前选的答案（不含正确答案，刷题途中可放心用）', async () => {
+  const quick = copyFab('📋', '复制题目 + 选项 + 我的选择', 'primary', async () => {
     const { text, choice } = await buildDoc({ header: true, reveal: false });
     await writeClipboard(text);
     const mine = choice?.mine.join('、') || '未选择';
     return `✓ 已复制题干 + ${choice?.options.length ?? 0} 个选项 · 我的选择：${mine}`;
   });
 
-  const full = copyButton('📄 复制全题', '复制题干、选项、我的选择、正确答案和解析（答案揭晓后可用）', async () => {
+  const full = copyFab('📄', '复制全题（含正确答案 / 解析）', '', async () => {
     const { text, choice, hasAnalysis } = await buildDoc({ header: true });
     await writeClipboard(text);
     if (!choice?.revealed) return '已复制，但答案还没揭晓：提交或点「看解析」后再复制才带正确答案';
@@ -69,18 +73,16 @@ function choiceCopyButtons(): HTMLButtonElement[] {
 }
 
 function subjectiveButtons(fileInput: HTMLInputElement): HTMLButtonElement[] {
-  const selBtn = mkBtn('🖊️ 手写转文字', 'primary', () => fileInput.click(),
-    '选择 iPad 导出的手写图片（可多选，按顺序拼接）');
+  const selBtn = mkFab('🖊️', '手写转文字（选图，可多选）', 'primary', () => fileInput.click());
 
-  const label = () => (cfg.autoPaste ? '📋 自动识别粘贴：开' : '📋 自动识别粘贴：关');
-  const pasteBtn = mkBtn(label(), 'cbocr-toggle' + (cfg.autoPaste ? ' on' : ''), () => {
+  const pasteLabel = () => (cfg.autoPaste ? '自动识别粘贴：开' : '自动识别粘贴：关');
+  const pasteBtn = mkFab('📥', pasteLabel(), 'toggle' + (cfg.autoPaste ? ' on' : ''), () => {
     save('autoPaste', !cfg.autoPaste);
-    pasteBtn.textContent = label();
-    pasteBtn.className = 'cbocr-btn cbocr-toggle' + (cfg.autoPaste ? ' on' : '');
-  }, '开启后，在答题框里 Cmd+V 粘贴图片会自动送去识别');
-  ui.pasteBtn = pasteBtn;
+    setFabLabel(pasteBtn, pasteLabel());
+    pasteBtn.classList.toggle('on', cfg.autoPaste);
+  });
 
-  const undoBtn = mkBtn('↩︎ 撤销插入', '', () => {
+  const undoBtn = mkFab('↩︎', '撤销插入', '', () => {
     const ta = getTextarea();
     if (ta && state.undoSnapshot !== null) {
       setValue(ta, state.undoSnapshot);
@@ -92,13 +94,13 @@ function subjectiveButtons(fileInput: HTMLInputElement): HTMLButtonElement[] {
   undoBtn.style.display = 'none';
   ui.undoBtn = undoBtn;
 
-  const copyBtn = copyButton('📄 复制全题', '把题干、我的作答、完整解析拼成 Markdown 复制到剪贴板（解析没展开会自动点开）', async () => {
+  const copyBtn = copyFab('📄', '复制全题（题干 / 作答 / 解析）', '', async () => {
     const { text } = await buildDoc({ header: true });
     await writeClipboard(text);
     return `✓ 已复制 ${text.length} 字（题干 + 我的作答 + 完整解析）`;
   });
 
-  const gradeBtn = mkBtn('🧮 AI 判分', '', async () => {
+  const gradeBtn = mkFab('🧮', 'AI 判分（对照解析踩分点）', '', async () => {
     if (state.busy) { setStatus('还在忙，稍等…'); return; }
     state.busy = true; setBusy(true); gradeBtn.disabled = true;
     try {
@@ -112,15 +114,30 @@ function subjectiveButtons(fileInput: HTMLInputElement): HTMLButtonElement[] {
     } finally {
       state.busy = false; setBusy(false); gradeBtn.disabled = false;
     }
-  }, '把题干 + 我的作答 + 完整解析发给模型，对照踩分点逐点判分（用你自己的 API Key，不消耗站点积分）');
+  });
 
-  return [selBtn, ui.pasteBtn, undoBtn, copyBtn, gradeBtn];
+  return [selBtn, pasteBtn, undoBtn, copyBtn, gradeBtn];
 }
 
-export function buildBar(anchor: Element, kind: QuestionKind): void {
-  const bar = document.createElement('div');
-  bar.className = 'cbocr-bar';
-  bar.dataset.cbocr = '1';
+/** 点一下轮换到下一个识别服务 */
+function profileFab(): HTMLButtonElement {
+  const label = () => `切换识别服务（当前：${providerLabel()}）`;
+  const btn = mkFab('🔁', label(), '', () => {
+    const n = cfg.profiles.length;
+    if (n < 2) { setStatus(n ? '只配置了一个服务，去 ⚙️ 添加更多' : '还没配置服务，点 ⚙️ 添加'); return; }
+    save('activeProfile', ((cfg.activeProfile | 0) + 1) % n);
+    setFabLabel(btn, label());
+    setStatus('已切换到 ' + providerLabel());
+  });
+  ui.onProfileChange = () => setFabLabel(btn, label());
+  return btn;
+}
+
+/** 左侧竖排悬浮按钮。题型变化（SPA 换题）时由 main 重建。 */
+export function buildFabs(kind: QuestionKind): HTMLElement {
+  const stack = document.createElement('div');
+  stack.className = 'cbocr-fabs';
+  stack.dataset.cbocr = kind;
 
   const fileInput = document.createElement('input');
   fileInput.type = 'file';
@@ -132,36 +149,20 @@ export function buildBar(anchor: Element, kind: QuestionKind): void {
     fileInput.value = '';
   });
 
-  const shotBtn = mkBtn('📸 智能截图', '', handleSmartScreenshot,
-    '截取题干高清题卡（顶部条自动标注题源、分值、难度，黄金宽度排版防止图片缩放文字过小）');
+  const shotBtn = mkFab('📸', '智能截图（题干 + 选项，写入剪贴板）', '', handleSmartScreenshot);
+  const cfgBtn = mkFab('⚙️', '设置', '', openSettings);
 
-  const cfgBtn = mkBtn('⚙️', '', openSettings, '管理识别服务 / 提示词 / 截图排版');
-  ui.statusEl = document.createElement('span');
-  ui.statusEl.className = 'cbocr-status';
-
-  const items: HTMLElement[] = [];
-  const actions: HTMLButtonElement[] = [shotBtn];
-
+  let items: HTMLButtonElement[];
   if (kind === 'choice') {
-    const copies = choiceCopyButtons();
-    items.push(...copies, shotBtn);
-    actions.push(...copies);
+    const [quick, full] = choiceCopyButtons();
+    items = [quick, full, shotBtn];
+    ui.actionBtns = [quick, full, shotBtn];
   } else {
     const [selBtn, pasteBtn, undoBtn, copyBtn, gradeBtn] = subjectiveButtons(fileInput);
-    const sel = document.createElement('select');
-    sel.className = 'cbocr-select';
-    sel.title = '切换识别服务';
-    sel.addEventListener('change', () => {
-      save('activeProfile', Number(sel.value));
-      setStatus('已切换到 ' + providerLabel());
-    });
-    ui.profileSel = sel;
-    refreshProfileSel();
-    items.push(selBtn, pasteBtn, undoBtn, shotBtn, copyBtn, gradeBtn, sel);
-    actions.push(selBtn, undoBtn, copyBtn, gradeBtn);
+    items = [selBtn, pasteBtn, undoBtn, shotBtn, copyBtn, gradeBtn, profileFab()];
+    ui.actionBtns = [selBtn, undoBtn, shotBtn, copyBtn, gradeBtn];
   }
 
-  ui.actionBtns = actions;
-  bar.append(fileInput, ...items, cfgBtn, ui.statusEl);
-  anchor.after(bar);
+  stack.append(fileInput, ...items, cfgBtn);
+  return stack;
 }

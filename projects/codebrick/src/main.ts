@@ -8,7 +8,7 @@
  *  首次使用：点 ⚙️ 添加一个识别服务（Endpoint + Key + 模型）。
  *
  * ── 选择题 ──────────────────────────────────────────────────
- *  面板提供「复制题目+选项」（含我当前的选择）和「复制全题」
+ *  左侧悬浮按钮提供「复制题目+选项」（含我当前的选择）和「复制全题」
  *  （含正确答案与解析，需答案揭晓后）。
  *
  * @connect * 是为了支持任意自建中转 / 代理 Endpoint；想收紧就在 header.txt 里改成自己的域名。
@@ -16,28 +16,20 @@
 import { bindTextarea } from './bind';
 import { $ , getTextarea } from './dom';
 import { getKind } from './question';
-import { buildBar } from './ui/bar';
+import { buildFabs } from './ui/fabs';
 import { CSS } from './ui/styles';
 
 GM_addStyle(CSS);
 
-/** 找到面板挂载点；选择题挂在选项卡片之后 */
-function anchorFor(kind: 'choice' | 'subjective'): Element | null {
-  if (kind === 'subjective') {
-    const ta = getTextarea()!;
-    bindTextarea(ta);
-    return $('.ca-diagram-tools') || ta.parentElement?.querySelector('.ca-tools') || ta;
-  }
-  return $('button.opt')?.closest('section.card, .card') || null;
-}
-
+/** 左侧悬浮按钮：题型变化才重建；离开题目页则移除 */
 function mount(): void {
   const kind = getKind();
-  if (!kind) return;
-  const anchor = anchorFor(kind);
-  if (!anchor) return;
-  if ((anchor.nextElementSibling as HTMLElement | null)?.dataset?.cbocr === '1') return;
-  buildBar(anchor, kind);
+  const cur = $('.cbocr-fabs');
+  if (!kind) { cur?.remove(); return; }
+  if (kind === 'subjective') bindTextarea(getTextarea()!);
+  if (cur?.dataset.cbocr === kind) return;
+  cur?.remove();
+  document.body.appendChild(buildFabs(kind));
 }
 
 // SPA 换题会重建 DOM，用 observer 盯着

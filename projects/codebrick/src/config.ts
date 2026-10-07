@@ -18,6 +18,7 @@ export interface Profile {
 }
 
 export type InsertMode = 'append' | 'cursor' | 'replace';
+export type ShotMode = 'modal' | 'silent';
 
 export interface Config {
   profiles: Profile[];
@@ -30,6 +31,8 @@ export interface Config {
   insertMode: InsertMode;
   maxEdge: number;
   shotWidth: number;
+  /** 智能截图完成后：弹窗预览 / 静默（只写剪贴板 + 提示） */
+  shotMode: ShotMode;
   /** 旧配置兜底，已迁到每张服务卡片 */
   maxTokens: number;
   thinking: Thinking;
@@ -56,6 +59,7 @@ const DEFAULTS: Config = {
   insertMode: 'append',
   maxEdge: 1600,        // 发送前把长边压到这个像素，省 token
   shotWidth: DEFAULT_SHOT_WIDTH,
+  shotMode: 'modal',
   maxTokens: DEFAULT_MAX_TOKENS,
   thinking: 'none',
   autoOpenAnalysis: true, // 复制全题时，主观题解析没展开就自动点「查看解析」

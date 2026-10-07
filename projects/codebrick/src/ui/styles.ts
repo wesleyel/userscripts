@@ -180,4 +180,45 @@ export const CSS = `
   .cbocr-cq-opt.bad { border-color: #fca5a5; background: #fef2f2; }
   .cbocr-cq-opt.bad .cbocr-cq-key { background: #dc2626; color: #fff; }
   .cbocr-cq-opt.bad .cbocr-cq-tag { color: #b91c1c; }
+
+  /* 左侧 Material 悬浮按钮 */
+  .cbocr-fabs {
+    position: fixed; left: 16px; top: 50%; transform: translateY(-50%); z-index: 9990;
+    display: flex; flex-direction: column; gap: 14px;
+  }
+  .cbocr-fab {
+    position: relative; width: 44px; height: 44px; padding: 0; border: 0; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center; cursor: pointer;
+    background: #fff; color: #374151; font: inherit; font-size: 19px; line-height: 1;
+    box-shadow: 0 1px 3px rgba(0,0,0,.22), 0 3px 8px rgba(0,0,0,.14);
+    transition: box-shadow .2s, transform .2s, background .2s;
+  }
+  .cbocr-fab:hover:not(:disabled) { box-shadow: 0 3px 6px rgba(0,0,0,.24), 0 8px 18px rgba(0,0,0,.18); transform: translateY(-1px); background: #f8fafc; }
+  .cbocr-fab:active:not(:disabled) { transform: scale(.94); }
+  .cbocr-fab:disabled { opacity: .45; cursor: not-allowed; }
+  .cbocr-fab.primary { background: #2563eb; color: #fff; }
+  .cbocr-fab.primary:hover:not(:disabled) { background: #1d4ed8; }
+  .cbocr-fab.toggle:not(.on) { opacity: .6; }
+  .cbocr-fab.on::after {
+    content: ''; position: absolute; top: 3px; right: 3px; width: 9px; height: 9px;
+    border-radius: 50%; background: #22c55e; border: 2px solid #fff; box-sizing: content-box;
+  }
+  .cbocr-fab-label {
+    position: absolute; left: calc(100% + 12px); top: 50%; transform: translate(-4px, -50%);
+    padding: 6px 12px; border-radius: 6px; background: rgba(33,33,33,.94); color: #fff;
+    font-size: 12px; font-weight: 500; white-space: nowrap; pointer-events: none;
+    opacity: 0; transition: opacity .15s, transform .15s;
+  }
+  .cbocr-fab:hover .cbocr-fab-label { opacity: 1; transform: translate(0, -50%); }
+
+  /* Snackbar */
+  .cbocr-toast {
+    position: fixed; left: 76px; bottom: 28px; z-index: 99998; max-width: min(420px, 70vw);
+    padding: 11px 18px; border-radius: 8px; background: #323232; color: #fff;
+    font-size: 13px; line-height: 1.5; box-shadow: 0 3px 10px rgba(0,0,0,.3);
+    opacity: 0; transform: translateY(8px); pointer-events: none; transition: opacity .2s, transform .2s;
+  }
+  .cbocr-toast.show { opacity: 1; transform: none; }
+  .cbocr-toast.ok { background: #1b5e20; }
+  .cbocr-toast.err { background: #b3261b; }
 `;
