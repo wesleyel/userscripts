@@ -1,6 +1,6 @@
 import { escHtml, $ } from './dom';
 import { cfg, DEFAULT_SHOT_WIDTH } from './config';
-import { getQuestionMeta, type QuestionMeta } from './question';
+import { getKind, getQuestionMeta, type QuestionMeta } from './question';
 
 declare global {
   interface Window { html2canvas?: (el: HTMLElement, opts?: Record<string, unknown>) => Promise<HTMLCanvasElement> }
@@ -44,22 +44,47 @@ export async function captureStemCard(): Promise<Shot> {
       ${meta.score ? `<span class="cbocr-shot-score"><span style="color:#d97706">💯</span> ${escHtml(meta.score)}</span>` : ''}
       ${meta.difficulty ? `<span class="cbocr-shot-diff"><span>难度</span> <span class="stars">${escHtml(meta.difficulty)}</span></span>` : ''}
     </div>`;
-  stem.prepend(header);
+  // 选择题：离屏克隆「题干 + 选项」，并抹掉作答状态/统计，保证截出来是一张干净的空白题卡
+  let target: HTMLElement = stem;
+  let temp: HTMLElement | null = null;
+  const choiceCard = getKind() === 'choice' ? $('button.opt')?.closest<HTMLElement>('.card') : null;
+  if (choiceCard) {
+    temp = document.createElement('div');
+    temp.className = 'cbocr-shot-wrap';
+    temp.style.cssText = 'position:fixed;left:-10000px;top:0;display:flex;flex-direction:column;gap:8px;background:#fff;';
+    const stemCopy = stem.cloneNode(true) as HTMLElement;
+    const optCopy = choiceCard.cloneNode(true) as HTMLElement;
+    optCopy.querySelectorAll('.answer-actions, .opt-numhint, [class*=opt-dist]').forEach((e) => e.remove());
+    optCopy.querySelectorAll('.opt').forEach((o) => o.classList.remove('selected', 'wrong', 'correct', 'readonly'));
+    temp.append(header, stemCopy, optCopy);
+    document.body.appendChild(temp);
+    target = temp;
+  } else {
+    stem.prepend(header);
+  }
 
   // 约束排版宽度：防止大图把题卡撑得过宽，导入 iPad/GoodNotes 时被等比缩小成微雕
   const targetWidth = Math.max(500, parseInt(String(cfg.shotWidth), 10) || DEFAULT_SHOT_WIDTH);
-  const prev = { w: stem.style.width, mw: stem.style.maxWidth, bs: stem.style.boxSizing };
-  stem.style.width = targetWidth + 'px';
-  stem.style.maxWidth = targetWidth + 'px';
-  stem.style.boxSizing = 'border-box';
+  const prev = { w: target.style.width, mw: target.style.maxWidth, bs: target.style.boxSizing };
+  target.style.width = targetWidth + 'px';
+  target.style.maxWidth = targetWidth + 'px';
+  target.style.boxSizing = 'border-box';
 
   const extraStyle = document.createElement('style');
-  extraStyle.textContent = '.card.stem img, .card.stem svg { max-width: 100% !important; height: auto !important; }';
+  extraStyle.textContent = `
+    .card.stem img, .card.stem svg { max-width: 100% !important; height: auto !important; }
+    .cbocr-shot-wrap .cbocr-shot-header { margin: 0 !important; }
+    .cbocr-shot-wrap .card { margin: 0 !important; padding: 12px 16px !important; gap: 6px !important; }
+    .cbocr-shot-wrap .md-seg p { margin: 6px 0 !important; }
+    .cbocr-shot-wrap .md-seg > :first-child { margin-top: 0 !important; }
+    .cbocr-shot-wrap .md-seg > :last-child { margin-bottom: 0 !important; }
+    .cbocr-shot-wrap .opt { margin: 0 !important; padding: 6px 12px !important; min-height: 0 !important; height: auto !important; }
+  `;
   document.head.appendChild(extraStyle);
 
   let canvas: HTMLCanvasElement;
   try {
-    canvas = await html2canvas(stem, {
+    canvas = await html2canvas(target, {
       scale: 2,
       useCORS: true,
       backgroundColor: '#ffffff',
@@ -69,10 +94,11 @@ export async function captureStemCard(): Promise<Shot> {
     });
   } finally {
     header.remove();
+    temp?.remove();
     extraStyle.remove();
-    stem.style.width = prev.w;
-    stem.style.maxWidth = prev.mw;
-    stem.style.boxSizing = prev.bs;
+    target.style.width = prev.w;
+    target.style.maxWidth = prev.mw;
+    target.style.boxSizing = prev.bs;
   }
 
   return new Promise((resolve, reject) => {
