@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         CodeBrick 手写作答 OCR + AI 判分
 // @namespace    https://www.codebrick.tech/
-// @version      3.0.0
+// @version      3.0.2
 // @description  CodeBrick 刷题页：iPad 手写作答图 OCR 转文字、智能截图题卡、复制全题（含选择题选项 / 我的选择 / 正确答案）、对照解析踩分点 AI 判分（任意 OpenAI 兼容服务，可配置多个）
 // @author       wesley
 // @match        https://www.codebrick.tech/practice/*
@@ -799,18 +799,42 @@ ${stem}
       ${meta.score ? `<span class="cbocr-shot-score"><span style="color:#d97706">💯</span> ${escHtml(meta.score)}</span>` : ""}
       ${meta.difficulty ? `<span class="cbocr-shot-diff"><span>难度</span> <span class="stars">${escHtml(meta.difficulty)}</span></span>` : ""}
     </div>`;
-    stem.prepend(header);
+    let target = stem;
+    let temp = null;
+    const choiceCard = getKind() === "choice" ? $("button.opt")?.closest(".card") : null;
+    if (choiceCard) {
+      temp = document.createElement("div");
+      temp.className = "cbocr-shot-wrap";
+      temp.style.cssText = "position:fixed;left:-10000px;top:0;display:flex;flex-direction:column;gap:8px;background:#fff;";
+      const stemCopy = stem.cloneNode(true);
+      const optCopy = choiceCard.cloneNode(true);
+      optCopy.querySelectorAll(".answer-actions, .opt-numhint, [class*=opt-dist]").forEach((e) => e.remove());
+      optCopy.querySelectorAll(".opt").forEach((o) => o.classList.remove("selected", "wrong", "correct", "readonly"));
+      temp.append(header, stemCopy, optCopy);
+      document.body.appendChild(temp);
+      target = temp;
+    } else {
+      stem.prepend(header);
+    }
     const targetWidth = Math.max(500, parseInt(String(cfg.shotWidth), 10) || DEFAULT_SHOT_WIDTH);
-    const prev = { w: stem.style.width, mw: stem.style.maxWidth, bs: stem.style.boxSizing };
-    stem.style.width = targetWidth + "px";
-    stem.style.maxWidth = targetWidth + "px";
-    stem.style.boxSizing = "border-box";
+    const prev = { w: target.style.width, mw: target.style.maxWidth, bs: target.style.boxSizing };
+    target.style.width = targetWidth + "px";
+    target.style.maxWidth = targetWidth + "px";
+    target.style.boxSizing = "border-box";
     const extraStyle = document.createElement("style");
-    extraStyle.textContent = ".card.stem img, .card.stem svg { max-width: 100% !important; height: auto !important; }";
+    extraStyle.textContent = `
+    .card.stem img, .card.stem svg { max-width: 100% !important; height: auto !important; }
+    .cbocr-shot-wrap .cbocr-shot-header { margin: 0 !important; }
+    .cbocr-shot-wrap .card { margin: 0 !important; padding: 12px 16px !important; gap: 6px !important; }
+    .cbocr-shot-wrap .md-seg p { margin: 6px 0 !important; }
+    .cbocr-shot-wrap .md-seg > :first-child { margin-top: 0 !important; }
+    .cbocr-shot-wrap .md-seg > :last-child { margin-bottom: 0 !important; }
+    .cbocr-shot-wrap .opt { margin: 0 !important; padding: 6px 12px !important; min-height: 0 !important; height: auto !important; }
+  `;
     document.head.appendChild(extraStyle);
     let canvas;
     try {
-      canvas = await html2canvas(stem, {
+      canvas = await html2canvas(target, {
         scale: 2,
         useCORS: true,
         backgroundColor: "#ffffff",
@@ -820,10 +844,11 @@ ${stem}
       });
     } finally {
       header.remove();
+      temp?.remove();
       extraStyle.remove();
-      stem.style.width = prev.w;
-      stem.style.maxWidth = prev.mw;
-      stem.style.boxSizing = prev.bs;
+      target.style.width = prev.w;
+      target.style.maxWidth = prev.mw;
+      target.style.boxSizing = prev.bs;
     }
     return new Promise((resolve, reject) => {
       canvas.toBlob((blob) => {
