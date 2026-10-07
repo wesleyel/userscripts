@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         CodeBrick 手写作答 OCR + AI 判分
 // @namespace    https://www.codebrick.tech/
-// @version      3.0.2
+// @version      3.0.3
 // @description  CodeBrick 刷题页：iPad 手写作答图 OCR 转文字、智能截图题卡、复制全题（含选择题选项 / 我的选择 / 正确答案）、对照解析踩分点 AI 判分（任意 OpenAI 兼容服务，可配置多个）
 // @author       wesley
 // @match        https://www.codebrick.tech/practice/*
@@ -486,11 +486,11 @@
     const qmetaEl = $(".qhead .qmeta, .qmeta");
     const diffEl = $(".difficulty, .qhead .difficulty");
     let source = badgeEl?.textContent?.trim() || badgeEl?.getAttribute("title")?.trim() || "";
+    if (!source) source = $(".qhead .ctx-crumb")?.innerText.replace(/\s+/g, " ").trim() || "";
     if (!source && qmetaEl) {
       const m = qmetaEl.textContent.match(/(?:真题|统考|模拟|期末|练习)[^·\n]*/);
       if (m) source = m[0].trim();
     }
-    if (!source) source = $(".qhead .ctx-crumb")?.innerText.replace(/\s+/g, " ").trim() || "";
     if (!source) source = document.title.replace(/ - CodeBrick.*|CodeBrick.*$/i, "").trim() || "题目";
     let score = "";
     if (qmetaEl) {
@@ -801,16 +801,8 @@ ${stem}
     </div>`;
     let target = stem;
     let temp = null;
-    const choiceCard = getKind() === "choice" ? $("button.opt")?.closest(".card") : null;
-    if (choiceCard) {
-      temp = document.createElement("div");
-      temp.className = "cbocr-shot-wrap";
-      temp.style.cssText = "position:fixed;left:-10000px;top:0;display:flex;flex-direction:column;gap:8px;background:#fff;";
-      const stemCopy = stem.cloneNode(true);
-      const optCopy = choiceCard.cloneNode(true);
-      optCopy.querySelectorAll(".answer-actions, .opt-numhint, [class*=opt-dist]").forEach((e) => e.remove());
-      optCopy.querySelectorAll(".opt").forEach((o) => o.classList.remove("selected", "wrong", "correct", "readonly"));
-      temp.append(header, stemCopy, optCopy);
+    if (getKind() === "choice") {
+      temp = buildChoiceCard(stem, meta);
       document.body.appendChild(temp);
       target = temp;
     } else {
@@ -824,12 +816,6 @@ ${stem}
     const extraStyle = document.createElement("style");
     extraStyle.textContent = `
     .card.stem img, .card.stem svg { max-width: 100% !important; height: auto !important; }
-    .cbocr-shot-wrap .cbocr-shot-header { margin: 0 !important; }
-    .cbocr-shot-wrap .card { margin: 0 !important; padding: 12px 16px !important; gap: 6px !important; }
-    .cbocr-shot-wrap .md-seg p { margin: 6px 0 !important; }
-    .cbocr-shot-wrap .md-seg > :first-child { margin-top: 0 !important; }
-    .cbocr-shot-wrap .md-seg > :last-child { margin-bottom: 0 !important; }
-    .cbocr-shot-wrap .opt { margin: 0 !important; padding: 6px 12px !important; min-height: 0 !important; height: auto !important; }
   `;
     document.head.appendChild(extraStyle);
     let canvas;
@@ -856,6 +842,33 @@ ${stem}
         resolve({ canvas, blob, dataUrl: canvas.toDataURL("image/png"), meta });
       }, "image/png");
     });
+  }
+  function buildChoiceCard(stem, meta) {
+    const { options } = readChoice();
+    const wrap2 = document.createElement("div");
+    wrap2.className = "cbocr-cq";
+    wrap2.style.cssText = "position:fixed;left:-10000px;top:0;";
+    const head = `
+    <div class="cbocr-cq-head">
+      <span class="cbocr-cq-chip">${escHtml(meta.source)}</span>
+      ${meta.qid ? `<span class="cbocr-cq-qid">${escHtml(meta.qid)}</span>` : ""}
+      <span class="cbocr-cq-sp"></span>
+      ${meta.difficulty ? `<span class="cbocr-cq-diff">${escHtml(meta.difficulty)}</span>` : ""}
+    </div>`;
+    const rows = options.map((o, i) => {
+      const btn = document.querySelectorAll("button.opt")[i];
+      const text = btn?.querySelector(".opt-text")?.innerHTML ?? escHtml(o.text);
+      const state2 = o.correct ? o.mine ? "ok" : "right" : o.mine ? "bad" : "";
+      const tag = o.correct && o.mine ? "我的选择 · 正确" : o.correct ? "正确答案" : o.mine ? "我的选择" : "";
+      return `<div class="cbocr-cq-opt ${state2 || (o.mine ? "mine" : "")}">
+      <span class="cbocr-cq-key">${escHtml(o.key)}</span>
+      <span class="cbocr-cq-text">${text}</span>
+      ${tag ? `<span class="cbocr-cq-tag">${tag}</span>` : ""}
+    </div>`;
+    }).join("");
+    const seg = stem.querySelector(".md-seg") || stem;
+    wrap2.innerHTML = `${head}<div class="cbocr-cq-stem">${seg.innerHTML}</div><div class="cbocr-cq-opts">${rows}</div>`;
+    return wrap2;
   }
 
   // projects/codebrick/src/ui/modals.ts
@@ -1516,6 +1529,40 @@ ${stem}
     border-radius: 6px;
     transition: max-width .15s ease;
   }
+
+  /* 选择题截图卡片 */
+  .cbocr-cq {
+    box-sizing: border-box; padding: 20px 24px 22px; background: #fff; color: #1f2937;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Helvetica Neue", sans-serif;
+    font-size: 15px; line-height: 1.7;
+  }
+  .cbocr-cq-head { display: flex; align-items: center; gap: 8px; padding-bottom: 12px; margin-bottom: 14px; border-bottom: 1px solid #eef0f3; font-size: 12px; }
+  .cbocr-cq-chip { padding: 2px 9px; border-radius: 999px; background: #eff6ff; color: #1d4ed8; font-weight: 600; }
+  .cbocr-cq-qid { color: #9ca3af; font-family: ui-monospace, Menlo, monospace; }
+  .cbocr-cq-sp { flex: 1; }
+  .cbocr-cq-diff { color: #f59e0b; letter-spacing: 1px; }
+  .cbocr-cq-stem p { margin: 6px 0; }
+  .cbocr-cq-stem > :first-child { margin-top: 0; }
+  .cbocr-cq-opts { display: flex; flex-direction: column; gap: 8px; margin-top: 16px; }
+  .cbocr-cq-opt {
+    display: flex; align-items: center; gap: 12px; padding: 9px 14px;
+    border: 1px solid #e5e7eb; border-radius: 10px; background: #fff;
+  }
+  .cbocr-cq-key {
+    flex: none; width: 24px; height: 24px; border-radius: 50%; background: #f3f4f6; color: #4b5563;
+    font-size: 13px; font-weight: 600; display: flex; align-items: center; justify-content: center;
+  }
+  .cbocr-cq-text { flex: 1; min-width: 0; }
+  .cbocr-cq-tag { flex: none; font-size: 12px; font-weight: 600; }
+  .cbocr-cq-opt.mine { border-color: #93c5fd; background: #eff6ff; }
+  .cbocr-cq-opt.mine .cbocr-cq-key { background: #2563eb; color: #fff; }
+  .cbocr-cq-opt.mine .cbocr-cq-tag { color: #1d4ed8; }
+  .cbocr-cq-opt.ok, .cbocr-cq-opt.right { border-color: #86efac; background: #f0fdf4; }
+  .cbocr-cq-opt.ok .cbocr-cq-key, .cbocr-cq-opt.right .cbocr-cq-key { background: #16a34a; color: #fff; }
+  .cbocr-cq-opt.ok .cbocr-cq-tag, .cbocr-cq-opt.right .cbocr-cq-tag { color: #15803d; }
+  .cbocr-cq-opt.bad { border-color: #fca5a5; background: #fef2f2; }
+  .cbocr-cq-opt.bad .cbocr-cq-key { background: #dc2626; color: #fff; }
+  .cbocr-cq-opt.bad .cbocr-cq-tag { color: #b91c1c; }
 `;
 
   // projects/codebrick/src/main.ts
