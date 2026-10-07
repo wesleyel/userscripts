@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         CodeBrick 手写作答 OCR + AI 判分
 // @namespace    https://www.codebrick.tech/
-// @version      3.0.3
+// @version      3.1.1
 // @description  CodeBrick 刷题页：iPad 手写作答图 OCR 转文字、智能截图题卡、复制全题（含选择题选项 / 我的选择 / 正确答案）、对照解析踩分点 AI 判分（任意 OpenAI 兼容服务，可配置多个）
 // @author       wesley
 // @match        https://www.codebrick.tech/practice/*
@@ -80,6 +80,7 @@
     maxEdge: 1600,
     // 发送前把长边压到这个像素，省 token
     shotWidth: DEFAULT_SHOT_WIDTH,
+    shotMode: "modal",
     maxTokens: DEFAULT_MAX_TOKENS,
     thinking: "none",
     autoOpenAnalysis: true
@@ -359,31 +360,48 @@
 
   // projects/codebrick/src/ui/status.ts
   var ui = {
-    statusEl: null,
     undoBtn: null,
-    pasteBtn: null,
-    profileSel: null,
-    actionBtns: []
+    actionBtns: [],
+    /** 服务档案被设置面板改动后，刷新「切换服务」按钮标签 */
+    onProfileChange: null
   };
+  var toast = null;
+  var toastTimer = 0;
   function setStatus(msg, kind) {
-    const el = ui.statusEl;
-    if (!el) return;
-    el.textContent = msg || "";
-    el.className = "cbocr-status" + (kind ? " " + kind : "");
+    if (!toast || !toast.isConnected) {
+      toast = document.createElement("div");
+      toast.className = "cbocr-toast";
+      document.body.appendChild(toast);
+    }
+    window.clearTimeout(toastTimer);
+    if (!msg) {
+      toast.classList.remove("show");
+      return;
+    }
+    toast.textContent = msg;
+    toast.className = "cbocr-toast show" + (kind ? " " + kind : "");
+    toastTimer = window.setTimeout(() => toast?.classList.remove("show"), kind === "err" ? 9e3 : 4500);
   }
   function setBusy(v) {
     ui.actionBtns.forEach((b) => {
       b.disabled = v;
     });
   }
-  function mkBtn(label, cls, onClick, title) {
+  function mkFab(icon, label, cls, onClick) {
     const b = document.createElement("button");
     b.type = "button";
-    b.className = "cbocr-btn" + (cls ? " " + cls : "");
-    b.textContent = label;
-    if (title) b.title = title;
+    b.className = "cbocr-fab" + (cls ? " " + cls : "");
+    b.setAttribute("aria-label", label);
+    b.innerHTML = '<span class="cbocr-fab-ic"></span><span class="cbocr-fab-label"></span>';
+    b.firstElementChild.textContent = icon;
+    b.lastElementChild.textContent = label;
     b.addEventListener("click", onClick);
     return b;
+  }
+  function setFabLabel(b, label) {
+    b.setAttribute("aria-label", label);
+    const el = b.querySelector(".cbocr-fab-label");
+    if (el) el.textContent = label;
   }
 
   // projects/codebrick/src/question.ts
@@ -988,27 +1006,6 @@ ${stem}
     });
   }
 
-  // projects/codebrick/src/ui/profile-select.ts
-  function refreshProfileSel() {
-    const sel = ui.profileSel;
-    if (!sel) return;
-    const list = cfg.profiles || [];
-    sel.innerHTML = "";
-    if (!list.length) {
-      sel.innerHTML = "<option>未配置服务</option>";
-      sel.disabled = true;
-      return;
-    }
-    sel.disabled = false;
-    list.forEach((prof, i) => {
-      const o = document.createElement("option");
-      o.value = String(i);
-      o.textContent = prof.model ? `${prof.name} · ${prof.model}` : prof.name;
-      sel.appendChild(o);
-    });
-    sel.value = String(Math.min(cfg.activeProfile | 0, list.length - 1));
-  }
-
   // projects/codebrick/src/ui/settings.ts
   var PRESETS = [
     ["OpenAI", "https://api.openai.com/v1/chat/completions", "gpt-4o"],
@@ -1126,6 +1123,12 @@ ${stem}
         <option value="replace">替换全部内容</option>
       </select>
 
+      <label>智能截图完成后</label>
+      <select id="o-shotmode">
+        <option value="modal">弹窗预览（可再复制 / 下载）</option>
+        <option value="silent">静默（只写入剪贴板，左下角提示）</option>
+      </select>
+
       <div class="cbocr-check"><input type="checkbox" id="o-stem"><label for="o-stem" style="margin:0;font-weight:400">把题干一起发给模型（提升专业术语识别率）</label></div>
       <div class="cbocr-check"><input type="checkbox" id="o-keep"><label for="o-keep" style="margin:0;font-weight:400">粘贴时同时保留原图（站点照常上传手写件）</label></div>
       <div class="cbocr-check"><input type="checkbox" id="o-autoana"><label for="o-autoana" style="margin:0;font-weight:400">「复制全题」时自动展开解析（会触发站点的自评卡片）</label></div>
@@ -1186,6 +1189,7 @@ ${stem}
       sel.value = "";
     });
     g("o-mode").value = cfg.insertMode;
+    g("o-shotmode").value = cfg.shotMode;
     g("o-stem").checked = cfg.useStem;
     g("o-keep").checked = cfg.keepImage;
     g("o-autoana").checked = cfg.autoOpenAnalysis;
@@ -1210,6 +1214,7 @@ ${stem}
       save("profiles", profiles);
       save("activeProfile", active);
       save("insertMode", g("o-mode").value);
+      save("shotMode", g("o-shotmode").value);
       save("useStem", g("o-stem").checked);
       save("keepImage", g("o-keep").checked);
       save("autoOpenAnalysis", g("o-autoana").checked);
@@ -1217,13 +1222,13 @@ ${stem}
       save("shotWidth", Math.max(500, parseInt(g("o-shotwidth").value, 10) || DEFAULT_SHOT_WIDTH));
       save("prompt", g("o-prompt").value || DEFAULT_PROMPT);
       save("gradePrompt", g("o-gprompt").value || DEFAULT_GRADE_PROMPT);
-      refreshProfileSel();
+      ui.onProfileChange?.();
       close();
       setStatus(`设置已保存 · 当前使用 ${providerLabel()}`, "ok");
     });
   }
 
-  // projects/codebrick/src/ui/bar.ts
+  // projects/codebrick/src/ui/fabs.ts
   async function handleSmartScreenshot() {
     if (state.busy) {
       setStatus("还在处理中，稍等…");
@@ -1240,8 +1245,12 @@ ${stem}
       } catch (err) {
         console.warn("[cbocr] 写入剪贴板异常:", err);
       }
-      setStatus(copied ? "✓ 截图已复制到剪贴板" : "✓ 截图已生成", "ok");
-      showScreenshotModal(blob, dataUrl, meta, canvas);
+      if (cfg.shotMode === "silent" && copied) {
+        setStatus("✓ 题卡截图已复制到剪贴板，可直接粘贴", "ok");
+      } else {
+        setStatus(copied ? "✓ 截图已复制到剪贴板" : "✓ 截图已生成", "ok");
+        showScreenshotModal(blob, dataUrl, meta, canvas);
+      }
     } catch (e) {
       console.error("[cbocr] 智能截图失败:", e);
       setStatus("截图失败：" + e.message, "err");
@@ -1250,8 +1259,8 @@ ${stem}
       setBusy(false);
     }
   }
-  function copyButton(label, title, run) {
-    const btn = mkBtn(label, "", async () => {
+  function copyFab(icon, label, cls, run) {
+    const btn = mkFab(icon, label, cls, async () => {
       btn.disabled = true;
       try {
         setStatus(await run(), "ok");
@@ -1261,17 +1270,17 @@ ${stem}
       } finally {
         btn.disabled = false;
       }
-    }, title);
+    });
     return btn;
   }
   function choiceCopyButtons() {
-    const quick = copyButton("📋 复制题目+选项", "复制题干、全部选项和我当前选的答案（不含正确答案，刷题途中可放心用）", async () => {
+    const quick = copyFab("📋", "复制题目 + 选项 + 我的选择", "primary", async () => {
       const { text, choice } = await buildDoc({ header: true, reveal: false });
       await writeClipboard(text);
       const mine = choice?.mine.join("、") || "未选择";
       return `✓ 已复制题干 + ${choice?.options.length ?? 0} 个选项 · 我的选择：${mine}`;
     });
-    const full = copyButton("📄 复制全题", "复制题干、选项、我的选择、正确答案和解析（答案揭晓后可用）", async () => {
+    const full = copyFab("📄", "复制全题（含正确答案 / 解析）", "", async () => {
       const { text, choice, hasAnalysis } = await buildDoc({ header: true });
       await writeClipboard(text);
       if (!choice?.revealed) return "已复制，但答案还没揭晓：提交或点「看解析」后再复制才带正确答案";
@@ -1280,20 +1289,14 @@ ${stem}
     return [quick, full];
   }
   function subjectiveButtons(fileInput) {
-    const selBtn = mkBtn(
-      "🖊️ 手写转文字",
-      "primary",
-      () => fileInput.click(),
-      "选择 iPad 导出的手写图片（可多选，按顺序拼接）"
-    );
-    const label = () => cfg.autoPaste ? "📋 自动识别粘贴：开" : "📋 自动识别粘贴：关";
-    const pasteBtn = mkBtn(label(), "cbocr-toggle" + (cfg.autoPaste ? " on" : ""), () => {
+    const selBtn = mkFab("🖊️", "手写转文字（选图，可多选）", "primary", () => fileInput.click());
+    const pasteLabel = () => cfg.autoPaste ? "自动识别粘贴：开" : "自动识别粘贴：关";
+    const pasteBtn = mkFab("📥", pasteLabel(), "toggle" + (cfg.autoPaste ? " on" : ""), () => {
       save("autoPaste", !cfg.autoPaste);
-      pasteBtn.textContent = label();
-      pasteBtn.className = "cbocr-btn cbocr-toggle" + (cfg.autoPaste ? " on" : "");
-    }, "开启后，在答题框里 Cmd+V 粘贴图片会自动送去识别");
-    ui.pasteBtn = pasteBtn;
-    const undoBtn = mkBtn("↩︎ 撤销插入", "", () => {
+      setFabLabel(pasteBtn, pasteLabel());
+      pasteBtn.classList.toggle("on", cfg.autoPaste);
+    });
+    const undoBtn = mkFab("↩︎", "撤销插入", "", () => {
       const ta = getTextarea();
       if (ta && state.undoSnapshot !== null) {
         setValue(ta, state.undoSnapshot);
@@ -1304,12 +1307,12 @@ ${stem}
     });
     undoBtn.style.display = "none";
     ui.undoBtn = undoBtn;
-    const copyBtn = copyButton("📄 复制全题", "把题干、我的作答、完整解析拼成 Markdown 复制到剪贴板（解析没展开会自动点开）", async () => {
+    const copyBtn = copyFab("📄", "复制全题（题干 / 作答 / 解析）", "", async () => {
       const { text } = await buildDoc({ header: true });
       await writeClipboard(text);
       return `✓ 已复制 ${text.length} 字（题干 + 我的作答 + 完整解析）`;
     });
-    const gradeBtn = mkBtn("🧮 AI 判分", "", async () => {
+    const gradeBtn = mkFab("🧮", "AI 判分（对照解析踩分点）", "", async () => {
       if (state.busy) {
         setStatus("还在忙，稍等…");
         return;
@@ -1330,13 +1333,28 @@ ${stem}
         setBusy(false);
         gradeBtn.disabled = false;
       }
-    }, "把题干 + 我的作答 + 完整解析发给模型，对照踩分点逐点判分（用你自己的 API Key，不消耗站点积分）");
-    return [selBtn, ui.pasteBtn, undoBtn, copyBtn, gradeBtn];
+    });
+    return [selBtn, pasteBtn, undoBtn, copyBtn, gradeBtn];
   }
-  function buildBar(anchor, kind) {
-    const bar = document.createElement("div");
-    bar.className = "cbocr-bar";
-    bar.dataset.cbocr = "1";
+  function profileFab() {
+    const label = () => `切换识别服务（当前：${providerLabel()}）`;
+    const btn = mkFab("🔁", label(), "", () => {
+      const n = cfg.profiles.length;
+      if (n < 2) {
+        setStatus(n ? "只配置了一个服务，去 ⚙️ 添加更多" : "还没配置服务，点 ⚙️ 添加");
+        return;
+      }
+      save("activeProfile", ((cfg.activeProfile | 0) + 1) % n);
+      setFabLabel(btn, label());
+      setStatus("已切换到 " + providerLabel());
+    });
+    ui.onProfileChange = () => setFabLabel(btn, label());
+    return btn;
+  }
+  function buildFabs(kind) {
+    const stack = document.createElement("div");
+    stack.className = "cbocr-fabs";
+    stack.dataset.cbocr = kind;
     const fileInput = document.createElement("input");
     fileInput.type = "file";
     fileInput.accept = "image/*";
@@ -1346,38 +1364,20 @@ ${stem}
       if (fileInput.files?.length) runOCR(fileInput.files);
       fileInput.value = "";
     });
-    const shotBtn = mkBtn(
-      "📸 智能截图",
-      "",
-      handleSmartScreenshot,
-      "截取题干高清题卡（顶部条自动标注题源、分值、难度，黄金宽度排版防止图片缩放文字过小）"
-    );
-    const cfgBtn = mkBtn("⚙️", "", openSettings, "管理识别服务 / 提示词 / 截图排版");
-    ui.statusEl = document.createElement("span");
-    ui.statusEl.className = "cbocr-status";
-    const items = [];
-    const actions = [shotBtn];
+    const shotBtn = mkFab("📸", "智能截图（题干 + 选项，写入剪贴板）", "", handleSmartScreenshot);
+    const cfgBtn = mkFab("⚙️", "设置", "", openSettings);
+    let items;
     if (kind === "choice") {
-      const copies = choiceCopyButtons();
-      items.push(...copies, shotBtn);
-      actions.push(...copies);
+      const [quick, full] = choiceCopyButtons();
+      items = [quick, full, shotBtn];
+      ui.actionBtns = [quick, full, shotBtn];
     } else {
       const [selBtn, pasteBtn, undoBtn, copyBtn, gradeBtn] = subjectiveButtons(fileInput);
-      const sel = document.createElement("select");
-      sel.className = "cbocr-select";
-      sel.title = "切换识别服务";
-      sel.addEventListener("change", () => {
-        save("activeProfile", Number(sel.value));
-        setStatus("已切换到 " + providerLabel());
-      });
-      ui.profileSel = sel;
-      refreshProfileSel();
-      items.push(selBtn, pasteBtn, undoBtn, shotBtn, copyBtn, gradeBtn, sel);
-      actions.push(selBtn, undoBtn, copyBtn, gradeBtn);
+      items = [selBtn, pasteBtn, undoBtn, shotBtn, copyBtn, gradeBtn, profileFab()];
+      ui.actionBtns = [selBtn, undoBtn, shotBtn, copyBtn, gradeBtn];
     }
-    ui.actionBtns = actions;
-    bar.append(fileInput, ...items, cfgBtn, ui.statusEl);
-    anchor.after(bar);
+    stack.append(fileInput, ...items, cfgBtn);
+    return stack;
   }
 
   // projects/codebrick/src/ui/styles.ts
@@ -1563,25 +1563,62 @@ ${stem}
   .cbocr-cq-opt.bad { border-color: #fca5a5; background: #fef2f2; }
   .cbocr-cq-opt.bad .cbocr-cq-key { background: #dc2626; color: #fff; }
   .cbocr-cq-opt.bad .cbocr-cq-tag { color: #b91c1c; }
+
+  /* 左侧 Material 悬浮按钮 */
+  .cbocr-fabs {
+    position: fixed; left: 16px; top: 50%; transform: translateY(-50%); z-index: 9990;
+    display: flex; flex-direction: column; gap: 14px;
+  }
+  .cbocr-fab {
+    position: relative; width: 44px; height: 44px; padding: 0; border: 0; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center; cursor: pointer;
+    background: #fff; color: #374151; font: inherit; font-size: 19px; line-height: 1;
+    box-shadow: 0 1px 3px rgba(0,0,0,.22), 0 3px 8px rgba(0,0,0,.14);
+    transition: box-shadow .2s, transform .2s, background .2s;
+  }
+  .cbocr-fab:hover:not(:disabled) { box-shadow: 0 3px 6px rgba(0,0,0,.24), 0 8px 18px rgba(0,0,0,.18); transform: translateY(-1px); background: #f8fafc; }
+  .cbocr-fab:active:not(:disabled) { transform: scale(.94); }
+  .cbocr-fab:disabled { opacity: .45; cursor: not-allowed; }
+  .cbocr-fab.primary { background: #2563eb; color: #fff; }
+  .cbocr-fab.primary:hover:not(:disabled) { background: #1d4ed8; }
+  .cbocr-fab.toggle:not(.on) { opacity: .6; }
+  .cbocr-fab.on::after {
+    content: ''; position: absolute; top: 3px; right: 3px; width: 9px; height: 9px;
+    border-radius: 50%; background: #22c55e; border: 2px solid #fff; box-sizing: content-box;
+  }
+  .cbocr-fab-label {
+    position: absolute; left: calc(100% + 12px); top: 50%; transform: translate(-4px, -50%);
+    padding: 6px 12px; border-radius: 6px; background: rgba(33,33,33,.94); color: #fff;
+    font-size: 12px; font-weight: 500; white-space: nowrap; pointer-events: none;
+    opacity: 0; transition: opacity .15s, transform .15s;
+  }
+  .cbocr-fab:hover .cbocr-fab-label { opacity: 1; transform: translate(0, -50%); }
+
+  /* Snackbar */
+  .cbocr-toast {
+    position: fixed; left: 76px; bottom: 28px; z-index: 99998; max-width: min(420px, 70vw);
+    padding: 11px 18px; border-radius: 8px; background: #323232; color: #fff;
+    font-size: 13px; line-height: 1.5; box-shadow: 0 3px 10px rgba(0,0,0,.3);
+    opacity: 0; transform: translateY(8px); pointer-events: none; transition: opacity .2s, transform .2s;
+  }
+  .cbocr-toast.show { opacity: 1; transform: none; }
+  .cbocr-toast.ok { background: #1b5e20; }
+  .cbocr-toast.err { background: #b3261b; }
 `;
 
   // projects/codebrick/src/main.ts
   GM_addStyle(CSS);
-  function anchorFor(kind) {
-    if (kind === "subjective") {
-      const ta = getTextarea();
-      bindTextarea(ta);
-      return $(".ca-diagram-tools") || ta.parentElement?.querySelector(".ca-tools") || ta;
-    }
-    return $("button.opt")?.closest("section.card, .card") || null;
-  }
   function mount() {
     const kind = getKind();
-    if (!kind) return;
-    const anchor = anchorFor(kind);
-    if (!anchor) return;
-    if (anchor.nextElementSibling?.dataset?.cbocr === "1") return;
-    buildBar(anchor, kind);
+    const cur = $(".cbocr-fabs");
+    if (!kind) {
+      cur?.remove();
+      return;
+    }
+    if (kind === "subjective") bindTextarea(getTextarea());
+    if (cur?.dataset.cbocr === kind) return;
+    cur?.remove();
+    document.body.appendChild(buildFabs(kind));
   }
   mount();
   new MutationObserver(mount).observe(document.body, { childList: true, subtree: true });
